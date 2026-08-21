@@ -304,6 +304,7 @@ function sanitizeTextForAi(value: string, limit = 4000): string {
 }
 
 function isSafeAiEndpoint(endpoint: string): boolean {
+  if (endpoint.startsWith("/")) return endpoint.startsWith("/api/");
   try {
     const url = new URL(endpoint);
     const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
@@ -625,8 +626,12 @@ function scoreReadiness(
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
+function configuredAiEndpoint(): string {
+  return import.meta.env.VITE_AI_REVIEW_ENDPOINT || (import.meta.env.PROD ? "/api/review-draft" : "");
+}
+
 export function aiReviewEnabled(): boolean {
-  const endpoint = import.meta.env.VITE_AI_REVIEW_ENDPOINT;
+  const endpoint = configuredAiEndpoint();
   return Boolean(endpoint && isSafeAiEndpoint(endpoint));
 }
 
@@ -685,7 +690,7 @@ export function computeLocalDraftReview(input: DraftReviewInput, records: Watcht
 
 export async function runDraftReview(input: DraftReviewInput, records: WatchtowerRecord[]): Promise<DraftReviewResult> {
   const localReview = computeLocalDraftReview(input, records);
-  const endpoint = import.meta.env.VITE_AI_REVIEW_ENDPOINT;
+  const endpoint = configuredAiEndpoint();
   if (!endpoint || !isSafeAiEndpoint(endpoint)) return localReview;
 
   const controller = new AbortController();

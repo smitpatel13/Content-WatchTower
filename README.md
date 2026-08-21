@@ -59,6 +59,25 @@ VITE_AI_REVIEW_ENDPOINT=http://127.0.0.1:8787/api/review-draft
 
 Keep model provider API keys on the server side only. Do not create `VITE_OPENAI_API_KEY`; Vite exposes `VITE_` variables to the browser. The AI endpoint returns structured recommendations while the app preserves local prediction and readability stats as fallback.
 
+## Vercel Deployment
+
+The Vercel branch includes a server-side API route at `/api/review-draft`, so production does not need `VITE_AI_REVIEW_ENDPOINT`.
+
+1. Import `smitpatel13/Content-WatchTower` into Vercel.
+2. Use branch `codex/vercel-deploy`.
+3. Keep the framework preset as `Vite`.
+4. Use build command `pnpm build` and output directory `dist`.
+5. Add these Vercel environment variables:
+
+```bash
+OPENAI_API_KEY=your-server-side-key
+OPENAI_MODEL=gpt-5-mini
+AI_REVIEW_MAX_DRAFT_CHARS=16000
+AI_REVIEW_TIMEOUT_MS=55000
+```
+
+Do not add any OpenAI key as a `VITE_` variable. If GA4 event tracking is approved, add `VITE_GA_MEASUREMENT_ID` separately. GA4 import still requires a backend read-only Google credential before it should be enabled in production.
+
 ## OpenAI Draft Review
 
 For local development with both the frontend and AI backend:
