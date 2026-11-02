@@ -304,7 +304,7 @@ function buildOpenAiRequest(reviewPayload) {
           {
             type: "input_text",
             text:
-              "You are an editorial assistant for a university content team. Give practical pre-publication advice for writers and editors. Be specific, concise, respectful, SEO-aware, and evidence-aware. Critique search clarity, reader relevance, technical language, headline strength, lead structure, and concrete next edits. Use the local historical prediction context when provided, but do not claim guaranteed traffic lift. Do not claim real-time trend data, keyword volume, or live search demand unless supplied in the payload. Phrase trend guidance as timely/editorial positioning. Do not invent facts. Do not include private data. Return only the requested JSON shape."
+              "You are an editorial assistant for a university content team. Give practical pre-publication advice for writers and editors. Be specific, concise, respectful, SEO-aware, and evidence-aware. Critique search clarity, reader relevance, technical language, headline strength, lead structure, and concrete next edits. Use the local historical prediction context only when prediction.trainingRows is greater than zero. When it is zero, do not claim historical patterns, similar-story performance, or top performers, and do not label evidence as Historical data; the prediction is a baseline only. Do not claim guaranteed traffic lift. Do not claim real-time trend data, keyword volume, or live search demand unless supplied in the payload. Phrase trend guidance as timely/editorial positioning. Do not invent facts. Do not include private data. Return only the requested JSON shape."
           }
         ]
       },
@@ -345,7 +345,9 @@ function extractOutputText(data) {
   return chunks.join("\n");
 }
 
-function normalizeAiReview(value) {
+function normalizeAiReview(value, trainingRows) {
+  const hasHistory = trainingRows > 0;
+  const unsupportedHistory = /historical(?:ly)? (?:top|perform|pattern)|top performers|similar stor(?:y|ies)|comparable stor(?:y|ies)|past performance/i;
   const recommendations = Array.isArray(value.recommendations) ? value.recommendations : [];
   const headlineOptions = Array.isArray(value.headlineOptions) ? value.headlineOptions : [];
   const checklist = Array.isArray(value.checklist) ? value.checklist : [];
@@ -370,7 +372,7 @@ function normalizeAiReview(value) {
         detail: sanitizeText(item?.detail, 420),
         impact: sanitizeText(item?.impact, 180)
       }))
-      .filter((item) => item.title && item.detail),
+      .filter((item) => item.title && item.detail && (hasHistory || !unsupportedHistory.test(`${item.title} ${item.detail} ${item.impact}`))),
     checklist: checklist
       .slice(0, 7)
       .map((item) => ({
@@ -403,7 +405,7 @@ function normalizeAiReview(value) {
         detail: sanitizeText(item?.detail, 260),
         source: ["Historical data", "Draft analysis", "AI inference"].includes(item?.source) ? item.source : "AI inference"
       }))
-      .filter((item) => item.label && item.detail)
+      .filter((item) => item.label && item.detail && (hasHistory || (item.source !== "Historical data" && !unsupportedHistory.test(`${item.label} ${item.detail}`))))
   };
 }
 
@@ -437,7 +439,7 @@ async function callOpenAi(reviewPayload) {
     const outputText = extractOutputText(data);
     if (!outputText) throw new Error("OpenAI returned no structured review");
     try {
-      return normalizeAiReview(JSON.parse(outputText));
+      return normalizeAiReview(JSON.parse(outputText), reviewPayload.localReview.prediction.trainingRows);
     } catch {
       throw new Error("OpenAI returned an incomplete structured review. Try again with a shorter draft.");
     }
