@@ -1,9 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const nodeBin = "/Users/smitpatel/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node";
-const pnpmBin =
-  "/Users/smitpatel/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/pnpm/bin/pnpm.cjs";
-
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
@@ -14,7 +10,7 @@ export default defineConfig({
     trace: "on-first-retry"
   },
   webServer: {
-    command: `"${nodeBin}" "${pnpmBin}" dev`,
+    command: "pnpm preview --port 5173",
     url: "http://127.0.0.1:5173",
     reuseExistingServer: true,
     timeout: 60_000

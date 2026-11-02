@@ -637,6 +637,11 @@ tr:last-child td {
   min-height: 300px;
 }
 
+.review-results-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .upload-inline {
   display: grid;
   gap: 8px;

@@ -22,9 +22,25 @@ const optionalHeaders = [
 ];
 export const allHeaders = [...requiredHeaders, ...optionalHeaders];
 export const maxRows = 5000;
+const maxFileBytes = 10 * 1024 * 1024;
 
-async function loadXlsx() {
-  return import("xlsx");
+async function loadExcel() {
+  const { default: ExcelJS } = await import("exceljs");
+  return ExcelJS;
+}
+
+function cellText(value: unknown): string {
+  if (value == null) return "";
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "object") {
+    if ("result" in value) return cellText(value.result);
+    if ("text" in value) return cellText(value.text);
+    if ("richText" in value && Array.isArray(value.richText)) {
+      return value.richText.map((part: { text?: string }) => part.text || "").join("");
+    }
+    return "";
+  }
+  return String(value);
 }
 
 function normalizeHeader(header: string): string {
@@ -177,25 +193,25 @@ export function parseSpreadsheetText(text: string): ImportRow[] {
 
 export async function parseSpreadsheetFile(file: File): Promise<ImportRow[]> {
   const extension = file.name.split(".").pop()?.toLowerCase();
+  if (file.size > maxFileBytes) throw new Error("Upload a file smaller than 10 MB.");
   if (extension === "csv") {
     return parseSpreadsheetText(await file.text());
   }
   if (extension === "xlsx") {
-    const XLSX = await loadXlsx();
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
+    const ExcelJS = await loadExcel();
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await file.arrayBuffer());
     const preferredSheet =
-      workbook.SheetNames.find((name) => name.toLowerCase() === "updated") ||
-      workbook.SheetNames.find((name) => ["original", "comparison"].includes(name.toLowerCase())) ||
-      workbook.SheetNames[0];
-    const sheet = workbook.Sheets[preferredSheet];
-    const rows = XLSX.utils.sheet_to_json<string[]>(sheet, {
-      header: 1,
-      defval: "",
-      raw: false,
-      blankrows: false
+      workbook.worksheets.find((sheet) => sheet.name.toLowerCase() === "updated") ||
+      workbook.worksheets.find((sheet) => ["original", "comparison"].includes(sheet.name.toLowerCase())) ||
+      workbook.worksheets[0];
+    if (!preferredSheet) throw new Error("The workbook has no sheets.");
+    const rows: string[][] = [];
+    preferredSheet.eachRow((row) => {
+      const cells = Array.from({ length: row.cellCount }, (_, index) => cellText(row.getCell(index + 1).value));
+      if (cells.some(Boolean)) rows.push(cells);
     });
-    return rowsToObjects(rows, preferredSheet);
+    return rowsToObjects(rows, preferredSheet.name);
   }
   throw new Error("Upload a .csv or .xlsx file.");
 }
@@ -359,7 +375,8 @@ export function summarizeImport(results: ImportValidationResult[]): ImportSummar
 }
 
 function escapeCsv(value: string | number | boolean): string {
-  const text = String(value);
+  const raw = String(value);
+  const text = typeof value === "string" && /^[\s\x00-\x1f]*[=+@-]/.test(raw) ? `'${raw}` : raw;
   if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
   return text;
 }
@@ -395,36 +412,22 @@ export function recordsToCsv(records: WatchtowerRecord[]): string {
 }
 
 export async function recordsToXlsxBlob(records: WatchtowerRecord[]): Promise<Blob> {
-  const XLSX = await loadXlsx();
-  const worksheet = XLSX.utils.json_to_sheet(
-    records.map((record) => ({
-      Title: record.title,
-      Topic: record.topic,
-      "Planned Date": record.plannedDate,
-      "Word Count": record.wordCount,
-      Images: record.hasImages ? "Yes" : "No",
-      Status: record.status,
-      Length: record.length,
-      SRA: record.sra || "",
-      Owner: record.owner,
-      URL: record.url,
-      Notes: record.notes,
-      "30-day Users": record.metrics30?.users || "",
-      "30-day Sessions": record.metrics30?.sessions || "",
-      "30-day Pageviews": record.metrics30?.pageviews || "",
-      "30-day Session Eng. Time": record.metrics30?.engagementSeconds || "",
-      "30-day Bounce Rate": record.metrics30?.bounceRate || "",
-      "90-day Users": record.metrics90?.users || "",
-      "90-day Sessions": record.metrics90?.sessions || "",
-      "90-day Pageviews": record.metrics90?.pageviews || "",
-      "90-day Session Eng. Time": record.metrics90?.engagementSeconds || "",
-      "90-day Bounce Rate": record.metrics90?.bounceRate || ""
-    }))
-  );
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Records");
-  const array = XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
-  return new Blob([array], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const ExcelJS = await loadExcel();
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Records");
+  worksheet.addRow(allHeaders);
+  for (const record of records) {
+    worksheet.addRow([
+      record.title, record.topic, record.plannedDate, record.wordCount, record.hasImages ? "Yes" : "No",
+      record.status, record.length, record.sra || "", record.owner, record.url, record.notes,
+      record.metrics30?.users ?? "", record.metrics30?.sessions ?? "", record.metrics30?.pageviews ?? "",
+      record.metrics30?.engagementSeconds ?? "", record.metrics30?.bounceRate ?? "",
+      record.metrics90?.users ?? "", record.metrics90?.sessions ?? "", record.metrics90?.pageviews ?? "",
+      record.metrics90?.engagementSeconds ?? "", record.metrics90?.bounceRate ?? ""
+    ]);
+  }
+  const array = await workbook.xlsx.writeBuffer();
+  return new Blob([new Uint8Array(array)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
 
 export function templateCsv(): string {

@@ -517,8 +517,9 @@ function App() {
     length: "Long",
     draftText: ""
   });
-  const [draftReview, setDraftReview] = useState<DraftReviewResult | null>(null);
+  const [completedReview, setCompletedReview] = useState<{ input: DraftReviewInput; result: DraftReviewResult; reviewedAt: string } | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewExportBusy, setReviewExportBusy] = useState(false);
   const [reviewMessage, setReviewMessage] = useState("");
 
   useEffect(() => {
@@ -655,7 +656,7 @@ function App() {
 
   function updateDraftInput<K extends keyof DraftReviewInput>(key: K, value: DraftReviewInput[K]) {
     setDraftInput((current) => ({ ...current, [key]: value }));
-    setDraftReview(null);
+    setCompletedReview(null);
   }
 
   function updatePatternFilter<K extends keyof PatternFilters>(key: K, value: PatternFilters[K]) {
@@ -674,11 +675,12 @@ function App() {
   }
 
   async function reviewDraft() {
+    const reviewedInput = { ...draftInput };
     setReviewBusy(true);
     setReviewMessage("");
     try {
-      const result = await runDraftReview(draftInput, records);
-      setDraftReview(result);
+      const result = await runDraftReview(reviewedInput, records);
+      setCompletedReview({ input: reviewedInput, result, reviewedAt: new Date().toISOString() });
       trackEvent("draft_review_run", {
         source: result.source,
         readiness_score: result.readinessScore,
@@ -686,11 +688,25 @@ function App() {
         training_rows: result.prediction.trainingRows
       });
     } catch (error) {
-      const result = computeLocalDraftReview(draftInput, records);
-      setDraftReview(result);
+      const result = computeLocalDraftReview(reviewedInput, records);
+      setCompletedReview({ input: reviewedInput, result, reviewedAt: new Date().toISOString() });
       setReviewMessage(error instanceof Error ? error.message : "AI connector was unavailable, so the local editorial review was used.");
     } finally {
       setReviewBusy(false);
+    }
+  }
+
+  async function downloadReview() {
+    if (!completedReview) return;
+    setReviewExportBusy(true);
+    try {
+      const { createDraftReviewWord } = await import("./lib/reviewExport");
+      const { blob, fileName } = await createDraftReviewWord(completedReview.input, completedReview.result, completedReview.reviewedAt);
+      downloadBlob(blob, fileName);
+    } catch {
+      setReviewMessage("Could not create the Word file. Please try again.");
+    } finally {
+      setReviewExportBusy(false);
     }
   }
 
@@ -880,9 +896,11 @@ function App() {
             onChange={updateDraftInput}
             onFile={handleDraftFile}
             onReview={() => void reviewDraft()}
-            result={draftReview}
+            onDownload={() => void downloadReview()}
+            result={completedReview?.result ?? null}
             topicOptions={predictionTopics.length ? predictionTopics : ["General"]}
             busy={reviewBusy}
+            exportBusy={reviewExportBusy}
             message={reviewMessage}
             aiConnected={aiReviewEnabled()}
           />
@@ -1158,9 +1176,11 @@ function DraftReviewPanel({
   onChange,
   onFile,
   onReview,
+  onDownload,
   result,
   topicOptions,
   busy,
+  exportBusy,
   message,
   aiConnected
 }: {
@@ -1168,9 +1188,11 @@ function DraftReviewPanel({
   onChange: <K extends keyof DraftReviewInput>(key: K, value: DraftReviewInput[K]) => void;
   onFile: (file: File) => void;
   onReview: () => void;
+  onDownload: () => void;
   result: DraftReviewResult | null;
   topicOptions: string[];
   busy: boolean;
+  exportBusy: boolean;
   message: string;
   aiConnected: boolean;
 }) {
@@ -1188,12 +1210,12 @@ function DraftReviewPanel({
           <form className="review-form">
             <label>
               Story title
-              <input value={input.title} onChange={(event) => onChange("title", event.target.value)} />
+              <input value={input.title} disabled={busy} onChange={(event) => onChange("title", event.target.value)} />
             </label>
             <div className="two-col">
               <label>
                 Topic or SRA
-                <select value={input.topic} onChange={(event) => onChange("topic", event.target.value)}>
+                <select value={input.topic} disabled={busy} onChange={(event) => onChange("topic", event.target.value)}>
                   <option>General</option>
                   {topicOptions
                     .filter((topic) => topic !== "General")
@@ -1204,20 +1226,20 @@ function DraftReviewPanel({
               </label>
               <label>
                 Planned date
-                <input type="date" value={input.plannedDate} onChange={(event) => onChange("plannedDate", event.target.value)} />
+                <input type="date" value={input.plannedDate} disabled={busy} onChange={(event) => onChange("plannedDate", event.target.value)} />
               </label>
             </div>
             <div className="two-col">
               <label>
                 Length
-                <select value={input.length} onChange={(event) => onChange("length", event.target.value as "Long" | "Short")}>
+                <select value={input.length} disabled={busy} onChange={(event) => onChange("length", event.target.value as "Long" | "Short")}>
                   <option>Long</option>
                   <option>Short</option>
                 </select>
               </label>
               <label>
                 Images
-                <select value={input.hasImages ? "Yes" : "No"} onChange={(event) => onChange("hasImages", event.target.value === "Yes")}>
+                <select value={input.hasImages ? "Yes" : "No"} disabled={busy} onChange={(event) => onChange("hasImages", event.target.value === "Yes")}>
                   <option>Yes</option>
                   <option>No</option>
                 </select>
@@ -1228,6 +1250,7 @@ function DraftReviewPanel({
               <textarea
                 className="draft-textarea"
                 value={input.draftText}
+                disabled={busy}
                 placeholder="Paste draft text here"
                 onChange={(event) => onChange("draftText", event.target.value)}
               />
@@ -1237,6 +1260,7 @@ function DraftReviewPanel({
               <input
                 id="draft-upload"
                 type="file"
+                disabled={busy}
                 accept=".txt,.md,text/plain,text/markdown"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
@@ -1253,6 +1277,12 @@ function DraftReviewPanel({
 
           {result ? (
             <div className="review-results">
+              <div className="review-results-toolbar">
+                <button type="button" className="button" onClick={onDownload} disabled={exportBusy} title="Save the feedback and reviewed draft as a Word document">
+                  <Download size={18} aria-hidden="true" />
+                  {exportBusy ? "Preparing Word..." : "Download Word"}
+                </button>
+              </div>
               <div className="review-score">
                 <span>{result.readinessLabel}</span>
                 <strong>{result.readinessScore}/100</strong>

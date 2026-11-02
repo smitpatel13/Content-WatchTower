@@ -44,8 +44,14 @@ function readBody(req) {
 }
 
 async function readJsonBody(req) {
-  if (req.body && typeof req.body === "object") return req.body;
-  if (typeof req.body === "string") return JSON.parse(req.body);
+  if (req.body && typeof req.body === "object") {
+    if (Buffer.byteLength(JSON.stringify(req.body)) > MAX_BODY_BYTES) throw new Error("Request body too large");
+    return req.body;
+  }
+  if (typeof req.body === "string") {
+    if (Buffer.byteLength(req.body) > MAX_BODY_BYTES) throw new Error("Request body too large");
+    return JSON.parse(req.body);
+  }
   const rawBody = await readBody(req);
   return rawBody ? JSON.parse(rawBody) : {};
 }
@@ -442,10 +448,13 @@ async function callOpenAi(reviewPayload) {
 
 function safeErrorMessage(error) {
   if (error?.name === "AbortError") return "Request timed out";
-  const message = String(error?.message || "Request failed").replace(/sk-[A-Za-z0-9_-]+/g, "[secret removed]");
+  const message = String(error?.message || "Request failed");
   if (/quota|billing|insufficient|credits/i.test(message)) return "OpenAI billing or quota blocked the AI review.";
   if (/401|api key|unauthorized/i.test(message)) return "OpenAI authentication failed.";
-  return message;
+  if (/too large/i.test(message)) return "Request body too large";
+  if (/Draft text is too short/i.test(message)) return "Draft text is too short for AI review";
+  if (/Invalid request payload|Missing input|Missing local review/i.test(message)) return message;
+  return "AI review could not be completed. Please try again.";
 }
 
 export default async function handler(req, res) {

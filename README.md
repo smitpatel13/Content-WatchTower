@@ -9,7 +9,7 @@ Content Watchtower is a small, separate MVP for planning content records, import
 - Records table with search, filters, sorting, pagination, create, view, edit, and delete.
 - CSV/XLSX import with a template, ASU Story Performance workbook support, row preview, validation, duplicate detection, and partial imports.
 - Prediction page that estimates 30-day and 90-day pageviews from imported historical rows.
-- Draft Review page that gives writers a readiness score, SEO critique, relevance angles, headline feedback, concrete draft edits, recommendations, and an editor checklist before publication.
+- Draft Review page that gives writers a readiness score, SEO critique, relevance angles, headline feedback, concrete draft edits, recommendations, and an editor checklist before publication. After reviewing, use **Download Word** to save the feedback and the draft it reviewed for later comparison.
 - CSV/XLSX export of the currently filtered records.
 - Optional GA4 product-event tracking with privacy filtering and a visible connector slot in Settings.
 - Browser local storage for an easy-to-run side-project MVP.

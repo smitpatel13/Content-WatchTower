@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import type { ImportRow, WatchtowerRecord } from "../types";
-import { parseSpreadsheetFile, parseSpreadsheetText, recordsToCsv, summarizeImport, templateCsv, validateImportRows } from "./spreadsheet";
+import { parseSpreadsheetFile, parseSpreadsheetText, recordsToCsv, recordsToXlsxBlob, summarizeImport, templateCsv, validateImportRows } from "./spreadsheet";
 
 const existingRecord: WatchtowerRecord = {
   id: "existing-1",
@@ -117,6 +117,7 @@ describe("spreadsheet imports", () => {
     expect(csv).toContain('"Story with ""quotes"""');
     expect(csv).toContain('"Contains, punctuation"');
     expect(templateCsv().split("\n")[0]).toContain("30-day Pageviews");
+    expect(recordsToCsv([{ ...existingRecord, title: "=HYPERLINK(\"https://example.com\")" }])).toContain("'=HYPERLINK");
   });
 
   it("parses the ASU grouped 30-day and 90-day workbook layout", () => {
@@ -137,8 +138,9 @@ describe("spreadsheet imports", () => {
   });
 
   it("parses an ASU-style XLSX upload from the Updated sheet", async () => {
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet([
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Updated");
+    worksheet.addRows([
       ["Source", "", "", "", "", "", "", "30 day visits", "", "", "", "", "90 day visits"],
       [
         "Original From Content Calendar",
@@ -179,10 +181,10 @@ describe("spreadsheet imports", () => {
         "63.61%"
       ]
     ]);
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Updated");
-    const array = XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+    const array = await workbook.xlsx.writeBuffer();
     const rows = await parseSpreadsheetFile({
       name: "ASU Story Performance .xlsx",
+      size: array.byteLength,
       arrayBuffer: async () => array
     } as File);
     const results = validateImportRows(rows, []);
@@ -191,5 +193,19 @@ describe("spreadsheet imports", () => {
     expect(results[0].record?.topic).toBe("Sustainability");
     expect(results[0].record?.metrics30?.sessions).toBe(4010);
     expect(results[0].record?.metrics90?.pageviews).toBe(8473);
+  });
+
+  it("exports a workbook with the expected headers and values", async () => {
+    const blob = await recordsToXlsxBlob([existingRecord]);
+    const workbook = new ExcelJS.Workbook();
+    const array = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(blob);
+    });
+    await workbook.xlsx.load(array);
+    expect(workbook.getWorksheet("Records")?.getCell("A1").value).toBe("Title");
+    expect(workbook.getWorksheet("Records")?.getCell("A2").value).toBe("Existing story");
   });
 });
