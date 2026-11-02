@@ -1490,13 +1490,15 @@ function PredictionPanel({
           <div className="prediction-results">
             <div className="prediction-cards">
               <Metric label="30-day pageviews" value={formatNumber(result.pred30)} hint={`Range ${formatNumber(result.interval[0])}-${formatNumber(result.interval[1])}`} />
-              <Metric label="90-day pageviews" value={formatNumber(result.pred90)} hint="Based on historical 90/30 ratio" />
+              <Metric label="90-day pageviews" value={formatNumber(result.pred90)} hint="Projected from the 30-day estimate" />
               <Metric label="Performance class" value={result.className} hint={`${Math.round(result.confidence * 100)}% confidence`} />
             </div>
             <div className="notice">
               {result.source === "historical-model"
-                ? "Prediction is using historical rows with pageview data from uploaded or sample records."
-                : "Import the ASU performance workbook to train this estimate on real history."}
+                ? "Prediction uses pageview history from imported records."
+                : result.trainingRows > 0
+                  ? "Limited history is available, so this is still a baseline estimate. Import more performance rows to improve it."
+                  : "Import the ASU performance workbook to train this estimate on real history."}
             </div>
             <div className="driver-list">
               <h3>Why this prediction?</h3>

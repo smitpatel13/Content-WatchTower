@@ -6,6 +6,14 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
+test("shows baseline guidance until real performance data is imported", async ({ page }) => {
+  await page.getByRole("button", { name: "Predict" }).first().click();
+  await expect(page.getByText("Baseline mode")).toBeVisible();
+  await expect(page.getByText("Projected from the 30-day estimate")).toBeVisible();
+  await page.getByRole("button", { name: "Patterns" }).first().click();
+  await expect(page.getByText("0 rows with metrics")).toBeVisible();
+});
+
 test("creates a record from the simple form", async ({ page }) => {
   await page.getByRole("button", { name: "New record" }).click();
   await page.getByLabel("Title").fill("Faculty team launches civic data project");
