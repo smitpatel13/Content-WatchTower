@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WatchtowerRecord } from "../types";
 import { buildPatternReport, defaultPatternFilters, performanceBand } from "./patterns";
+import { sampleRecords } from "./sampleData";
 
 const baseRecord: Omit<WatchtowerRecord, "id" | "title" | "topic" | "plannedDate" | "metrics30" | "metrics90"> = {
   wordCount: 900,
@@ -72,5 +73,12 @@ describe("pattern reports", () => {
     expect(topicReport.records[0].title).toContain("Research");
     expect(highReport.records.map((record) => record.title)).toContain("Health outreach story");
     expect(performanceBand(records[1], records)).toBe("Low");
+  });
+
+  it("excludes built-in examples from performance patterns", () => {
+    const report = buildPatternReport([...sampleRecords, records[0]]);
+    expect(report.summary.storyCount).toBe(1);
+    expect(report.summary.performanceRows).toBe(1);
+    expect(report.topStories.map((item) => item.id)).toEqual(["one"]);
   });
 });

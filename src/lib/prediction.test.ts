@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WatchtowerRecord } from "../types";
 import { computePrediction, deriveTopicFromUrl, formatDuration } from "./prediction";
+import { sampleRecords } from "./sampleData";
 
 function record(partial: Partial<WatchtowerRecord>): WatchtowerRecord {
   return {
@@ -55,6 +56,16 @@ describe("prediction model", () => {
     expect(result.pred90).toBeGreaterThan(result.pred30);
     expect(result.trainingRows).toBe(5);
     expect(result.similarRecords.length).toBeGreaterThan(0);
+  });
+
+  it("does not train on built-in example performance data", () => {
+    const result = computePrediction(
+      { title: "New research lab opens", topic: "Research", plannedDate: "2026-08-15", wordCount: 900, hasImages: true, length: "Long" },
+      sampleRecords
+    );
+    expect(result.trainingRows).toBe(0);
+    expect(result.similarRecords).toHaveLength(0);
+    expect(result.source).toBe("baseline");
   });
 
   it("formats engagement duration for dashboard display", () => {

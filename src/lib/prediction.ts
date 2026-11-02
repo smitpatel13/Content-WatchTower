@@ -1,4 +1,5 @@
 import type { PerformanceMetrics, PredictionInput, PredictionResult, WatchtowerRecord } from "../types";
+import { isSampleRecord } from "./sampleData";
 
 const topicKeywords: Record<string, string[]> = {
   Research: ["research", "study", "science", "discover", "lab", "experiment", "innovation", "finding", "analysis"],
@@ -112,8 +113,8 @@ function similarRows(records: WatchtowerRecord[], input: PredictionInput): Watch
 }
 
 export function computePrediction(input: PredictionInput, records: WatchtowerRecord[]): PredictionResult {
-  const allRows = records.filter((record) => pageviews(record) > 0);
-  const trainingRows = selectTrainingRows(records, input);
+  const allRows = records.filter((record) => !isSampleRecord(record) && pageviews(record) > 0);
+  const trainingRows = selectTrainingRows(allRows, input);
   const drivers: string[] = [];
   let pred30 = median(trainingRows.map(pageviews)) || 1000;
 

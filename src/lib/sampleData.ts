@@ -65,3 +65,9 @@ export const sampleRecords: WatchtowerRecord[] = [
     updatedAt: now
   }
 ];
+
+const sampleIds = new Set(sampleRecords.map((record) => record.id));
+
+export function isSampleRecord(record: WatchtowerRecord): boolean {
+  return sampleIds.has(record.id);
+}

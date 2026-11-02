@@ -11,6 +11,7 @@ import type {
   WatchtowerRecord
 } from "../types";
 import { computePrediction, formatNumber } from "./prediction";
+import { isSampleRecord } from "./sampleData";
 
 function words(text: string): string[] {
   return text.trim().match(/[A-Za-z0-9'’-]+/g) || [];
@@ -80,14 +81,14 @@ function headlineScore(title: string): { score: number; feedback: string } {
   return { score: rounded, feedback };
 }
 
-function topHistoricalWordCount(records: WatchtowerRecord[]): number {
+function topHistoricalWordCount(records: WatchtowerRecord[]): number | undefined {
   const rows = records
-    .filter((record) => record.metrics30?.pageviews && record.wordCount > 0)
+    .filter((record) => !isSampleRecord(record) && record.metrics30?.pageviews && record.wordCount > 0)
     .sort((a, b) => Number(b.metrics30?.pageviews || 0) - Number(a.metrics30?.pageviews || 0));
   const top = rows.slice(0, Math.max(5, Math.ceil(rows.length * 0.25)));
-  if (!top.length) return 850;
+  if (!top.length) return undefined;
   const values = top.map((record) => record.wordCount).sort((a, b) => a - b);
-  return values[Math.floor(values.length / 2)] || 850;
+  return values[Math.floor(values.length / 2)];
 }
 
 function firstParagraph(text: string): string {
@@ -245,7 +246,8 @@ function buildDraftRewrite(input: DraftReviewInput, stats: DraftStats): DraftRew
   };
 }
 
-function buildEvidence(input: DraftReviewInput, stats: DraftStats, records: WatchtowerRecord[], prediction: DraftReviewResult["prediction"]): PatternEvidence[] {
+function buildEvidence(input: DraftReviewInput, stats: DraftStats, prediction: DraftReviewResult["prediction"]): PatternEvidence[] {
+  const hasHistory = prediction.trainingRows > 0;
   const evidence: PatternEvidence[] = [
     {
       label: "Prediction basis",
@@ -253,7 +255,7 @@ function buildEvidence(input: DraftReviewInput, stats: DraftStats, records: Watc
         prediction.source === "historical-model"
           ? `Uses ${prediction.trainingRows.toLocaleString()} historical rows with 30-day performance data.`
           : "Uses a baseline estimate until more historical rows are imported.",
-      source: "Historical data"
+      source: hasHistory ? "Historical data" : "Draft analysis"
     },
     {
       label: "Draft readability",
@@ -268,7 +270,7 @@ function buildEvidence(input: DraftReviewInput, stats: DraftStats, records: Watc
   ];
 
   prediction.drivers.slice(0, 2).forEach((driver) => {
-    evidence.push({ label: "Historical pattern", detail: driver, source: "Historical data" });
+    evidence.push({ label: hasHistory ? "Historical pattern" : "Prediction assumption", detail: driver, source: hasHistory ? "Historical data" : "AI inference" });
   });
 
   prediction.similarRecords.slice(0, 2).forEach((record) => {
@@ -279,11 +281,11 @@ function buildEvidence(input: DraftReviewInput, stats: DraftStats, records: Watc
     });
   });
 
-  if (!records.some((record) => record.metrics30?.pageviews)) {
+  if (!hasHistory) {
     evidence.push({
       label: "Data gap",
       detail: "Import more performance rows before treating recommendations as model-backed.",
-      source: "Historical data"
+      source: "Draft analysis"
     });
   }
 
@@ -557,7 +559,7 @@ function buildRecommendations(input: DraftReviewInput, stats: DraftStats, record
     );
   }
 
-  if (Math.abs(stats.wordCount - targetWordCount) > 220) {
+  if (targetWordCount !== undefined && Math.abs(stats.wordCount - targetWordCount) > 220) {
     const direction = stats.wordCount < targetWordCount ? "expand" : "tighten";
     addRecommendation(
       recommendations,
@@ -684,7 +686,7 @@ export function computeLocalDraftReview(input: DraftReviewInput, records: Watcht
     seo,
     trend,
     rewrite,
-    evidence: buildEvidence(input, stats, records, prediction)
+    evidence: buildEvidence(input, stats, prediction)
   };
 }
 

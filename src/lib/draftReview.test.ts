@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DraftReviewInput, WatchtowerRecord } from "../types";
 import { analyzeDraftText, computeLocalDraftReview, recommendationImpactText } from "./draftReview";
+import { sampleRecords } from "./sampleData";
 
 const baseInput: DraftReviewInput = {
   title: "ASU research opens new clean energy lab",
@@ -61,5 +62,12 @@ describe("draft review", () => {
 
     expect(review.readinessLabel).toBe("Needs major work");
     expect(review.recommendations[0].title).toBe("Add the draft text");
+  });
+
+  it("does not present example records as historical evidence", () => {
+    const review = computeLocalDraftReview(baseInput, sampleRecords);
+    expect(review.prediction.trainingRows).toBe(0);
+    expect(review.evidence.some((item) => item.source === "Historical data")).toBe(false);
+    expect(review.recommendations.some((item) => item.detail.includes("historical performers"))).toBe(false);
   });
 });

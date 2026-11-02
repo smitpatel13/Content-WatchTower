@@ -1,4 +1,5 @@
 import type { WatchtowerRecord } from "../types";
+import { isSampleRecord } from "./sampleData";
 
 export type PatternDateRange = "All" | "Last 90 days" | "Last 12 months";
 export type PatternPerformanceBand = "All" | "High" | "Medium" | "Low" | "No performance data";
@@ -148,11 +149,12 @@ function insightFor(label: string, group?: PatternGroup): string | undefined {
 }
 
 export function buildPatternReport(records: WatchtowerRecord[], filters: PatternFilters = defaultPatternFilters): PatternReport {
-  const filtered = records.filter((record) => {
+  const dataRecords = records.filter((record) => !isSampleRecord(record));
+  const filtered = dataRecords.filter((record) => {
     if (filters.topic !== "All" && record.topic !== filters.topic) return false;
     if (filters.sra !== "All" && (record.sra || "Unlabeled") !== filters.sra) return false;
     if (!inDateRange(record, filters.dateRange)) return false;
-    if (filters.performanceBand !== "All" && performanceBand(record, records) !== filters.performanceBand) return false;
+    if (filters.performanceBand !== "All" && performanceBand(record, dataRecords) !== filters.performanceBand) return false;
     return true;
   });
 
